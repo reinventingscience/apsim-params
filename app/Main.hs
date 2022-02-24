@@ -40,13 +40,17 @@ runAPSIMClient = do
   fprintLn "Connecting to APSIM server..."
   runTCPClient defaultAPSIMServer defaultAPSIMServerPort $ \s -> do
     fprintLn "Connected."
-    sendToSocket s runCommand
-    validateResponse s ackCommand
-    sendToSocket s finCommand
-    validateResponse s ackCommand
+    sendRun s
+    sendFin s
     finished <- readFromSocket s
     fprintLn ("Finished with status " % stext) $ BS.decodeUtf8 finished
+    if finished == finCommand
+      then readResults
+      else return ()
     fprintLn "Done."
+
+readResults :: IO ()
+readResults = return () -- TODO
 
 class Sendable a where
   toPayload :: a -> BSB.Builder
@@ -71,8 +75,16 @@ sendToSocket s msg' =
     fprintLn ("Sending message with length " % int % ": '" % stext % "'") (BS.length msg) (BS.decodeASCII msg)
     sendMany s [len, msg]
 
+sendWithAck :: BS.ByteString -> Socket -> IO ()
+sendWithAck cmd s = do
+  sendToSocket s cmd
+  validateResponse s ackCommand
+
 sendRun :: Socket -> IO ()
-sendRun s = sendToSocket s runCommand
+sendRun = sendWithAck runCommand
+
+sendFin :: Socket -> IO ()
+sendFin = sendWithAck finCommand
 
 readFromSocket :: Socket -> IO BS.ByteString
 readFromSocket s = do
