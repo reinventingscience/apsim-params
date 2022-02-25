@@ -21,6 +21,18 @@ maintainer:         a.chapman@data61.csiro.au
 -- category:
 extra-source-files: CHANGELOG.md
 
+library
+    build-depends:    base ^>= 4.16.0.0
+                    , binary ^>= 0.8.9.0
+                    , bytestring ^>= 0.11.1.0
+                    , formatting ^>= 7.1.3
+                    , network ^>= 3.1.2.7
+                    , network-run ^>= 0.2.4
+                    , text ^>= 2.0
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    exposed-modules:  APSIM.Client
+
 executable apsim-params
     main-is:          Main.hs
 
@@ -30,11 +42,7 @@ executable apsim-params
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:    base ^>= 4.16.0.0
-                    , binary ^>= 0.8.9.0
-                    , bytestring ^>= 0.11.1.0
-                    , formatting ^>= 7.1.3
-                    , network ^>= 3.1.2.7
-                    , network-run ^>= 0.2.4
-                    , text ^>= 2.0
+                    , apsim-params
+
     hs-source-dirs:   app
     default-language: Haskell2010
