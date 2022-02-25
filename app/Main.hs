@@ -146,7 +146,7 @@ readFromSocket s = do
           let toRead = min bufferSize pending
           in do
             chunk <- recv s (fromIntegral toRead)
-            receiveAll (chunk <> received) (pending - toRead)
+            receiveAll (received <> chunk) (pending - toRead)
 
 validateResponse :: Socket -> BS.ByteString -> IO ()
 validateResponse s expected = do
