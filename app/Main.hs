@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main (main) where
 
+import Control.Category ((>>>))
 import qualified Control.Exception as E
-import Data.Binary.Get (runGet, getWord32le)
+import Data.Binary.Get (runGet, getWord32le, getDoublele, isEmpty)
 import Data.Function ((&))
 import Data.Word (Word32)
 import qualified Data.ByteString.Builder as BSB
@@ -40,17 +41,53 @@ runAPSIMClient = do
   fprintLn "Connecting to APSIM server..."
   runTCPClient defaultAPSIMServer defaultAPSIMServerPort $ \s -> do
     fprintLn "Connected."
-    sendRun s
-    sendFin s
+    sendRunWithAck s
+    sendFinWithAck s
     finished <- readFromSocket s
     fprintLn ("Finished with status " % stext) $ BS.decodeUtf8 finished
     if finished == finCommand
-      then readResults
+      then readResults s "Report" ["Yield"]
       else return ()
     fprintLn "Done."
 
-readResults :: IO ()
-readResults = return () -- TODO
+readResults :: Socket -> BS.ByteString -> [BS.ByteString] -> IO ()
+readResults s table params = do
+  -- Tell the server we want to read the results
+  sendRead s
+
+  -- Tell it the table we want results from
+  sendWithAck s table
+
+  -- Send the parameters one at a time
+  traverse (sendWithAck s) params
+  sendFin s -- indicates the parameter list is complete
+
+  finished <- readFromSocket s
+  fprintLn ("Finished with status " % stext) $ BS.decodeUtf8 finished
+  if finished == finCommand
+    then do
+      sendAck s
+      traverse readResult params
+      return ()
+    else return ()
+
+  where
+    readResult param = do
+      result <- readFromSocket s
+      sendAck s
+      fprintLn ("Received data for param '" % stext % "': '" % list float % "'") (BS.decodeASCII param) (decodeDoubles result)
+
+decodeDoubles :: BS.ByteString -> [Double]
+decodeDoubles = LBS.fromStrict >>> runGet getDoubles
+  where
+    getDoubles = do
+      empty <- isEmpty
+      if empty
+        then return []
+        else do
+          val <- getDoublele -- Assumes server machine is little-endian
+          vals <- getDoubles
+          return (val:vals)
 
 class Sendable a where
   toPayload :: a -> BSB.Builder
@@ -75,21 +112,30 @@ sendToSocket s msg' =
     fprintLn ("Sending message with length " % int % ": '" % stext % "'") (BS.length msg) (BS.decodeASCII msg)
     sendMany s [len, msg]
 
-sendWithAck :: BS.ByteString -> Socket -> IO ()
-sendWithAck cmd s = do
+sendWithAck :: Socket -> BS.ByteString -> IO ()
+sendWithAck s cmd = do
   sendToSocket s cmd
   validateResponse s ackCommand
 
-sendRun :: Socket -> IO ()
-sendRun = sendWithAck runCommand
+sendRunWithAck :: Socket -> IO ()
+sendRunWithAck s = sendWithAck s runCommand
+
+sendRead :: Socket -> IO ()
+sendRead s = sendWithAck s readCommand
 
 sendFin :: Socket -> IO ()
-sendFin = sendWithAck finCommand
+sendFin s = sendToSocket s finCommand
+
+sendAck :: Socket -> IO ()
+sendAck s = sendToSocket s ackCommand
+
+sendFinWithAck :: Socket -> IO ()
+sendFinWithAck s = sendWithAck s finCommand
 
 readFromSocket :: Socket -> IO BS.ByteString
 readFromSocket s = do
   lenBs <- recv s 4
-  let len = runGet getWord32le (LBS.fromStrict lenBs) -- TODO: error handling
+  let len = runGet getWord32le (LBS.fromStrict lenBs) -- Assumes server machine is little-endian TODO: error handling
   fprintLn ("Receiving message with length " % int) len 
   receiveAll "" len
   where
