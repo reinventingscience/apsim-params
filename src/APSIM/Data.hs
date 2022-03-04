@@ -29,9 +29,11 @@ import Formatting
 import Formatting.Time
 
 data APSIMType a where
-  APSIMDouble :: APSIMType Double
-  APSIMString :: APSIMType Text
-  APSIMDate :: APSIMType Day
+  APSIMInteger :: APSIMType Int
+  APSIMDouble  :: APSIMType Double
+  APSIMBoolean :: APSIMType Bool
+  APSIMDate    :: APSIMType Day
+  APSIMString  :: APSIMType Text
 
 deriveArgDict ''APSIMType
 
@@ -41,37 +43,51 @@ instance Eq (APSIMType a) where
   (==) = defaultEq
 
 instance GEq APSIMType where
-  geq APSIMDouble APSIMDouble = Just Refl
-  geq APSIMString APSIMString = Just Refl
-  geq APSIMDate APSIMDate     = Just Refl
-  geq _ _                     = Nothing
+  geq APSIMInteger APSIMInteger = Just Refl
+  geq APSIMDouble  APSIMDouble  = Just Refl
+  geq APSIMBoolean APSIMBoolean = Just Refl
+  geq APSIMDate    APSIMDate    = Just Refl
+  geq APSIMString  APSIMString  = Just Refl
+  geq _            _            = Nothing
 
 instance GCompare APSIMType where
-  gcompare APSIMDouble APSIMDouble = GEQ
-  gcompare APSIMDouble _           = GLT
-  gcompare _ APSIMDouble           = GGT
+  gcompare APSIMInteger APSIMInteger = GEQ
+  gcompare APSIMInteger _            = GLT
+  gcompare _            APSIMInteger = GGT
 
-  gcompare APSIMString APSIMString = GEQ
-  gcompare APSIMString _           = GLT
-  gcompare _ APSIMString           = GGT
+  gcompare APSIMDouble  APSIMDouble  = GEQ
+  gcompare APSIMDouble  _            = GLT
+  gcompare _            APSIMDouble  = GGT
 
-  gcompare APSIMDate APSIMDate     = GEQ
+  gcompare APSIMBoolean APSIMBoolean = GEQ
+  gcompare APSIMBoolean _            = GLT
+  gcompare _            APSIMBoolean = GGT
+
+  gcompare APSIMDate    APSIMDate    = GEQ
+  gcompare APSIMDate    _            = GLT
+  gcompare _            APSIMDate    = GGT
+
+  gcompare APSIMString  APSIMString  = GEQ
 
 instance Show (APSIMType a) where
-  showsPrec _ APSIMDouble = showString "APSIMDouble"
-  showsPrec _ APSIMString = showString "APSIMString"
-  showsPrec _ APSIMDate   = showString "APSIMDate"
+  showsPrec _ APSIMInteger = showString "APSIMInteger"
+  showsPrec _ APSIMDouble  = showString "APSIMDouble"
+  showsPrec _ APSIMBoolean = showString "APSIMBoolean"
+  showsPrec _ APSIMDate    = showString "APSIMDate"
+  showsPrec _ APSIMString  = showString "APSIMString"
 
 instance GShow APSIMType where
   gshowsPrec = showsPrec
 
 data Variable = Variable
-  { vAddress :: !Text -- E.g. "[Clock].Today"
+  { vAddress :: !Text -- E.g. "Clock.Today"
   , vType    :: !(Some APSIMType)
   } deriving (Eq, Ord, Show)
 
 fAPSIMValue :: Format r (DSum APSIMType Identity -> r)
 fAPSIMValue = later $ \case
+  (APSIMInteger :=> Identity d) -> bprint int d
   (APSIMDouble :=> Identity d) -> bprint float d
-  (APSIMString :=> Identity t) -> bprint stext t
+  (APSIMBoolean :=> Identity d) -> bprint build d
   (APSIMDate :=> Identity d) -> bprint dateDash d
+  (APSIMString :=> Identity t) -> bprint stext t

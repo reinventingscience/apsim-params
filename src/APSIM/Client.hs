@@ -147,7 +147,9 @@ readFromSocket s = do
   lenBs <- recv s 4
   let len = runGet getWord32le (LBS.fromStrict lenBs) -- Assumes server machine is little-endian TODO: error handling
   fprintLn ("Receiving message with length " % int) len
-  receiveAll "" len
+  result <- receiveAll "" len
+  -- fprintLn ("Received: '" % stext % "'") (BS.decodeUtf8 result)
+  return result
   where
     receiveAll received pending =
       if pending == 0
