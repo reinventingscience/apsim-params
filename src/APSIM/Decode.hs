@@ -3,12 +3,17 @@
 module APSIM.Decode
   ( decodeVariable
   , decodeVariables
+  , getInt
+  , getDouble
+  , getBool
+  , getText
+  , getDate
   ) where
 
 import Data.Binary.Get
        ( Get
        , getByteString
-       , getDoublehost
+       , getDoublele
        , getInt32le
        , getWord8
        , isEmpty
@@ -24,7 +29,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
-import Data.Time.Calendar (Day)
+import Data.Time.Calendar (Day, fromGregorian)
 import Data.Time.Format (defaultTimeLocale, parseTimeOrError)
 
 import APSIM.Data
@@ -33,46 +38,49 @@ import Debug.Trace
 import Formatting
 
 decodeVariable :: Some APSIMType -> LBS.ByteString -> DSum APSIMType Identity
-decodeVariable dt = runGet (varDecoder dt)
+decodeVariable dt = runGet (getVar dt)
 
 decodeVariables :: Some APSIMType -> LBS.ByteString -> [DSum APSIMType Identity]
-decodeVariables dt = runGet (varListDecoder dt)
+decodeVariables dt = runGet (getVarList dt)
 
-varDecoder :: Some APSIMType -> Get (DSum APSIMType Identity)
-varDecoder (Some APSIMInteger) =
-  getInt32le -- Assumes server machine is little-endian
-  <&> fromIntegral
-  <&> (APSIMInteger ==>)
-varDecoder (Some APSIMDouble) =
-  getDoublehost -- Assumes server machine is the same endianness as us, and has doubles the same size
-  <&> (APSIMDouble ==>)
-varDecoder (Some APSIMBoolean) = do
-  byte <- getWord8 -- Assumes server machine is little-endian
-  return $ APSIMBoolean ==> (byte /= 0)
-varDecoder (Some APSIMString) =
-  textDecoder
-  <&> (APSIMString ==>)
-varDecoder (Some APSIMDate) =
-  textDecoder
-  <&> parseDate
-  <&> (APSIMDate ==>)
+getInt :: Get Int
+getInt = getInt32le <&> fromIntegral
 
-varListDecoder :: Some APSIMType -> Get [DSum APSIMType Identity]
-varListDecoder dt = do
+getDouble :: Get Double
+getDouble = getDoublele
+
+getBool :: Get Bool
+getBool = getWord8 <&> (/= 0)
+
+getText :: Get Text
+getText = do
+  len <- getInt32le
+  bs <- getByteString $ fromIntegral len
+  return $ T.decodeUtf8 bs -- TODO: handle decoding error
+
+getDate :: Get Day
+getDate = getInt <&> parseDate
+
+getVar :: Some APSIMType -> Get (DSum APSIMType Identity)
+getVar (Some APSIMInteger) = getInt    <&> (APSIMInteger ==>)
+getVar (Some APSIMDouble)  = getDouble <&> (APSIMDouble  ==>)
+getVar (Some APSIMBoolean) = getBool   <&> (APSIMBoolean ==>)
+getVar (Some APSIMString)  = getText   <&> (APSIMString  ==>)
+getVar (Some APSIMDate)    = getDate   <&> (APSIMDate    ==>)
+
+getVarList :: Some APSIMType -> Get [DSum APSIMType Identity]
+getVarList dt = do
   empty <- isEmpty
   if empty
     then return []
     else do
-      val <- varDecoder dt
-      vals <- varListDecoder dt
+      val <- getVar dt
+      vals <- getVarList dt
       return (val:vals)
 
-textDecoder :: Get Text
-textDecoder = do
-  len <- getInt32le -- Assumes server machine is little-endian
-  bs <- getByteString $ fromIntegral len
-  return $ T.decodeUtf8 bs -- TODO: handle decoding error
-
-parseDate :: Text -> Day
-parseDate txt =
-  parseTimeOrError False defaultTimeLocale "%Y-%m-%d" (T.unpack txt)
+parseDate :: Int -> Day
+parseDate i =
+  let y = fromIntegral i `div` 10000
+      m = i `mod` 10000 `div` 100
+      d = i `mod` 100
+  in fromGregorian y m d
